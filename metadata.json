@@ -1,0 +1,5 @@
+{
+  "name": "MicroComp AI Lab",
+  "description": "一个微机原理与接口技术（8086/8255）的互动学习平台，由 Gemini AI 提供代码仿真和辅导支持。",
+  "requestFramePermissions": []
+}
