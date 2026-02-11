@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppView } from './types';
+import { AppView } from '../types';
 import CpuSimulator from './components/CpuSimulator';
 import InterfaceLab from './components/InterfaceLab';
 import AiTutor from './components/AiTutor';

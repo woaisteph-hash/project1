@@ -1,3 +1,5 @@
+import React from 'react';
+
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   SIMULATOR_8086 = 'SIMULATOR_8086',

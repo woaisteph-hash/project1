@@ -67,44 +67,44 @@ const AiTutor: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-[85vh] bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden max-w-5xl mx-auto">
       {/* Chat Header */}
-      <div className="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 rounded-lg">
-            <Bot className="text-white" size={20} />
+      <div className="p-5 bg-slate-950/50 border-b border-white/5 flex justify-between items-center backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-900/20">
+            <Bot className="text-white" size={24} />
           </div>
           <div>
-            <h3 className="text-white font-semibold">AI 助教</h3>
-            <p className="text-slate-400 text-xs">x86 架构专家</p>
+            <h3 className="text-white font-bold text-lg">AI 助教</h3>
+            <p className="text-slate-400 text-xs font-medium">x86 架构与接口技术专家</p>
           </div>
         </div>
         <button 
           onClick={() => setMessages([messages[0]])}
-          className="text-slate-400 hover:text-red-400 transition-colors p-2"
+          className="text-slate-400 hover:text-red-400 transition-colors p-2 hover:bg-white/5 rounded-lg"
           title="清空对话"
         >
-          <Trash2 size={18} />
+          <Trash2 size={20} />
         </button>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-800">
+      <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-900">
         {messages.map((msg) => (
           <div 
             key={msg.id} 
             className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${
               msg.role === 'user' ? 'bg-blue-600' : 'bg-indigo-600'
             }`}>
-              {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+              {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
             </div>
             
-            <div className={`max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed whitespace-pre-wrap ${
+            <div className={`max-w-[85%] rounded-2xl p-5 text-sm md:text-base leading-relaxed whitespace-pre-wrap shadow-md ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white rounded-tr-none' 
-                : 'bg-slate-700 text-slate-200 rounded-tl-none border border-slate-600'
+                : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'
             }`}>
               {msg.text}
             </div>
@@ -112,10 +112,10 @@ const AiTutor: React.FC = () => {
         ))}
         {loading && (
           <div className="flex gap-4">
-             <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Bot size={16} />
+             <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg">
+                <Bot size={20} />
              </div>
-             <div className="bg-slate-700 rounded-2xl p-4 rounded-tl-none border border-slate-600 flex items-center gap-2">
+             <div className="bg-slate-800 rounded-2xl p-5 rounded-tl-none border border-slate-700 flex items-center gap-2">
                 <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div>
                 <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
@@ -126,21 +126,21 @@ const AiTutor: React.FC = () => {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-slate-900 border-t border-slate-700">
+      <div className="p-5 bg-slate-950/50 border-t border-white/5 backdrop-blur-md">
         <div className="relative">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="询问关于 MOV 指令、中断向量表或控制字的问题..."
-            className="w-full bg-slate-800 text-white pl-4 pr-12 py-3 rounded-xl border border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none h-14 custom-scrollbar"
+            className="w-full bg-slate-800 text-white pl-5 pr-14 py-4 rounded-xl border border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none h-16 custom-scrollbar text-sm md:text-base shadow-inner transition-all hover:border-slate-600"
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || loading}
-            className="absolute right-2 top-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="absolute right-3 top-3 p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
           >
-            <Send size={18} />
+            <Send size={20} />
           </button>
         </div>
       </div>

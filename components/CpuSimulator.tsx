@@ -1,7 +1,37 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { RegisterState, SimulationResult } from '../types';
 import { simulateAssembly } from '../services/geminiService';
-import { Play, RotateCcw, Cpu, Save, Loader2, BookOpen, Database, Search, StepForward, Circle } from 'lucide-react';
+import { Play, RotateCcw, Cpu, Save, Loader2, BookOpen, Database, Search, StepForward, Circle, HelpCircle, X, ChevronRight, Terminal, ArrowDown, Copy, Check } from 'lucide-react';
+
+// Instruction Data for Help System
+const instructionDocs = [
+  { cmd: 'MOV', name: '数据传送', syntax: 'MOV DST, SRC', desc: '将源操作数复制到目的操作数。', flags: '无' },
+  { cmd: 'PUSH', name: '入栈', syntax: 'PUSH SRC', desc: 'SP=SP-2, 将操作数压入堆栈。', flags: '无' },
+  { cmd: 'POP', name: '出栈', syntax: 'POP DST', desc: '弹出栈顶数据至DST, SP=SP+2。', flags: '无' },
+  { cmd: 'XCHG', name: '交换', syntax: 'XCHG OP1, OP2', desc: '交换两个操作数的内容。', flags: '无' },
+  { cmd: 'LEA', name: '取有效地址', syntax: 'LEA REG, MEM', desc: '将内存偏移地址传送给寄存器。', flags: '无' },
+  { cmd: 'ADD', name: '加法', syntax: 'ADD DST, SRC', desc: 'DST = DST + SRC。', flags: 'OF, SF, ZF, AF, PF, CF' },
+  { cmd: 'ADC', name: '带进位加', syntax: 'ADC DST, SRC', desc: 'DST = DST + SRC + CF。', flags: 'OF, SF, ZF, AF, PF, CF' },
+  { cmd: 'SUB', name: '减法', syntax: 'SUB DST, SRC', desc: 'DST = DST - SRC。', flags: 'OF, SF, ZF, AF, PF, CF' },
+  { cmd: 'SBB', name: '带借位减', syntax: 'SBB DST, SRC', desc: 'DST = DST - SRC - CF。', flags: 'OF, SF, ZF, AF, PF, CF' },
+  { cmd: 'INC', name: '加1', syntax: 'INC DST', desc: 'DST = DST + 1。注意：不影响CF标志。', flags: 'OF, SF, ZF, AF, PF' },
+  { cmd: 'DEC', name: '减1', syntax: 'DEC DST', desc: 'DST = DST - 1。注意：不影响CF标志。', flags: 'OF, SF, ZF, AF, PF' },
+  { cmd: 'CMP', name: '比较', syntax: 'CMP DST, SRC', desc: '执行减法(DST-SRC)但不保存结果，只更新标志位。', flags: 'OF, SF, ZF, AF, PF, CF' },
+  { cmd: 'AND', name: '逻辑与', syntax: 'AND DST, SRC', desc: '按位与。CF=0, OF=0。', flags: 'SF, ZF, PF' },
+  { cmd: 'OR', name: '逻辑或', syntax: 'OR DST, SRC', desc: '按位或。CF=0, OF=0。', flags: 'SF, ZF, PF' },
+  { cmd: 'XOR', name: '逻辑异或', syntax: 'XOR DST, SRC', desc: '按位异或。CF=0, OF=0。', flags: 'SF, ZF, PF' },
+  { cmd: 'TEST', name: '测试', syntax: 'TEST DST, SRC', desc: '按位与但不保存结果，只更新标志。', flags: 'SF, ZF, PF' },
+  { cmd: 'JMP', name: '无条件转移', syntax: 'JMP LABEL', desc: '跳转到指定标号。', flags: '无' },
+  { cmd: 'JZ/JE', name: '零/相等跳转', syntax: 'JZ LABEL', desc: '若 ZF=1 则跳转。', flags: '无' },
+  { cmd: 'JNZ/JNE', name: '非零/不等跳转', syntax: 'JNZ LABEL', desc: '若 ZF=0 则跳转。', flags: '无' },
+  { cmd: 'JC', name: '进位跳转', syntax: 'JC LABEL', desc: '若 CF=1 则跳转。', flags: '无' },
+  { cmd: 'LOOP', name: '循环', syntax: 'LOOP LABEL', desc: 'CX=CX-1, 若CX!=0则跳转。', flags: '无' },
+  { cmd: 'CALL', name: '过程调用', syntax: 'CALL PROC', desc: '压入IP (及CS)，跳转。', flags: '无' },
+  { cmd: 'RET', name: '过程返回', syntax: 'RET', desc: '弹出IP (及CS)。', flags: '无' },
+  { cmd: 'CLD', name: '清方向', syntax: 'CLD', desc: 'DF=0, 串操作地址递增。', flags: 'DF' },
+  { cmd: 'STD', name: '置方向', syntax: 'STD', desc: 'DF=1, 串操作地址递减。', flags: 'DF' },
+  { cmd: 'MOVSB', name: '串传送', syntax: 'REP MOVSB', desc: 'DS:[SI] -> ES:[DI], 更新SI, DI。', flags: '无' },
+];
 
 const initialRegisters: RegisterState = {
   AX: "0000", BX: "0000", CX: "0000", DX: "0000",
@@ -61,24 +91,26 @@ POP BX        ; 此时 BX = 1111H`
 
 const CpuSimulator: React.FC = () => {
   const [registers, setRegisters] = useState<RegisterState>(initialRegisters);
+  const [changedRegs, setChangedRegs] = useState<string[]>([]);
+  
   const [code, setCode] = useState<string>(examPresets[0].code);
   const [loading, setLoading] = useState(false);
   const [lastExplanation, setLastExplanation] = useState<string>("");
   const [error, setError] = useState<string | undefined>();
   const [isPresetMenuOpen, setIsPresetMenuOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [helpSearch, setHelpSearch] = useState("");
+  const [copied, setCopied] = useState(false);
   
-  // Memory State
   const [memory, setMemory] = useState<Record<string, string>>({});
   const [memoryStartAddr, setMemoryStartAddr] = useState<string>("0000");
 
-  // Breakpoint & Execution State
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
-  const [executionLine, setExecutionLine] = useState<number>(0); // 0-indexed line number where IP is currently 'paused'
+  const [executionLine, setExecutionLine] = useState<number>(0); 
   
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
 
-  // Sync scrolling between textarea and line numbers
   const handleScroll = () => {
       if (textAreaRef.current && lineNumbersRef.current) {
           lineNumbersRef.current.scrollTop = textAreaRef.current.scrollTop;
@@ -97,45 +129,33 @@ const CpuSimulator: React.FC = () => {
 
   const handleCodeChange = (val: string) => {
       setCode(val);
-      // If code changes, reset execution progress but keep breakpoints if possible (though lines might shift)
-      // For safety in this simple version, we reset execution pointer.
       setExecutionLine(0);
       setError(undefined);
+      setChangedRegs([]);
   };
 
   const handleSmartRun = async () => {
     setLoading(true);
     setError(undefined);
+    setChangedRegs([]);
     
     const lines = code.split('\n');
     const totalLines = lines.length;
-
-    // Determine the range of code to execute
-    // Start from current executionLine
-    // Stop at the NEXT breakpoint that is strictly greater than executionLine
-    // OR end of code
     let nextStopLine = totalLines;
     
-    // Find next breakpoint
     const upcomingBreakpoints = breakpoints.filter(b => b > executionLine);
     if (upcomingBreakpoints.length > 0) {
         nextStopLine = upcomingBreakpoints[0];
     }
 
-    // If we are already at the end, just return (or reset?)
     if (executionLine >= totalLines) {
         setLoading(false);
         return;
     }
 
-    // Slice the code
-    // We only send the code chunk. 
-    // NOTE: For complex jumps (JMP BACK), sending partial code might lose label context if the label is above.
-    // However, for step-debugging, we assume the AI simulates the 'next instructions' based on current register state.
     const codeChunk = lines.slice(executionLine, nextStopLine).join('\n');
 
     if (!codeChunk.trim()) {
-        // Skip empty lines/comments if they result in no-op, just advance
         setExecutionLine(nextStopLine);
         setLoading(false);
         return;
@@ -146,15 +166,23 @@ const CpuSimulator: React.FC = () => {
       if (result.error) {
         setError(result.error);
       } else {
+        const newChanged: string[] = [];
+        Object.keys(result.registers).forEach((key) => {
+            const k = key as keyof RegisterState;
+            if (result.registers[k] !== registers[k]) {
+                newChanged.push(k);
+            }
+        });
+        setChangedRegs(newChanged);
+        
         setRegisters(result.registers);
-        // Append explanation instead of overwriting if we are stepping
+        
         if (executionLine > 0) {
             setLastExplanation(prev => prev + "\n\n--- 继续执行 ---\n" + result.explanation);
         } else {
             setLastExplanation(result.explanation);
         }
         
-        // Update memory state
         if (result.memoryChanges && result.memoryChanges.length > 0) {
             const newMem = { ...memory };
             result.memoryChanges.forEach(change => {
@@ -166,7 +194,6 @@ const CpuSimulator: React.FC = () => {
             setMemory(newMem);
         }
 
-        // Advance instruction pointer
         setExecutionLine(nextStopLine);
       }
     } catch (e) {
@@ -182,22 +209,29 @@ const CpuSimulator: React.FC = () => {
     setLastExplanation("");
     setError(undefined);
     setExecutionLine(0);
+    setChangedRegs([]);
   };
 
-  // Helper to render memory rows
+  const copyCode = () => {
+      navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+  };
+
   const renderMemoryRows = () => {
       const rows = [];
       const start = parseInt(memoryStartAddr, 16) || 0;
       
-      for (let i = 0; i < 16; i++) {
+      // Increased to 16 rows to make scrolling more useful and visible
+      for (let i = 0; i < 16; i++) { 
           const currentAddrDec = start + i;
           const currentAddrHex = currentAddrDec.toString(16).toUpperCase().padStart(4, '0');
           const val = memory[currentAddrHex] || "00";
           
           rows.push(
-              <div key={currentAddrHex} className="flex justify-between items-center py-1 border-b border-slate-700/50 last:border-0 hover:bg-slate-700/30 px-2 rounded">
-                  <span className="font-mono text-slate-500 text-xs">{currentAddrHex}</span>
-                  <span className={`font-mono font-bold ${memory[currentAddrHex] ? 'text-yellow-400' : 'text-slate-300'}`}>
+              <div key={currentAddrHex} className="flex justify-between items-center py-2 px-3 border-b border-slate-700/30 last:border-0 hover:bg-white/5 rounded transition-colors group">
+                  <span className="font-mono text-slate-500 text-xs group-hover:text-blue-400">{currentAddrHex}</span>
+                  <span className={`font-mono font-bold tracking-wider ${memory[currentAddrHex] ? 'text-yellow-400' : 'text-slate-300'}`}>
                       {val}
                   </span>
               </div>
@@ -206,56 +240,101 @@ const CpuSimulator: React.FC = () => {
       return rows;
   };
 
+  const filteredDocs = instructionDocs.filter(doc => 
+    doc.cmd.includes(helpSearch.toUpperCase()) || 
+    doc.name.includes(helpSearch) ||
+    doc.desc.includes(helpSearch)
+  );
+
   const lineCount = code.split('\n').length;
   const isFinished = executionLine >= lineCount && lineCount > 0;
   const isPaused = executionLine > 0 && !isFinished;
 
   return (
-    <div className="flex flex-col h-full gap-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Cpu className="text-blue-400" /> 8086 汇编仿真器
-        </h2>
-        <div className="flex gap-3">
+    <div className="flex flex-col gap-8 w-full max-w-[1800px] mx-auto pb-24">
+      
+      {/* 1. Header Control Bar - Sticky */}
+      <div className="sticky top-0 z-30 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-900/80 p-5 rounded-b-2xl md:rounded-2xl border-b md:border border-white/10 backdrop-blur-xl shadow-2xl transition-all">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="p-2.5 bg-blue-600/20 rounded-xl border border-blue-500/20 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
+                <Terminal className="text-blue-400" size={24}/>
+            </div>
+            <div className="flex flex-col">
+                <h2 className="text-xl font-bold text-white tracking-tight">
+                    8086 汇编仿真器
+                </h2>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <span className="flex items-center gap-1"><Circle size={6} className="text-green-500 fill-current"/> 系统就绪</span>
+                    <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
+                    <span>双击行号设置断点</span>
+                </div>
+            </div>
+        </div>
+        
+        <div className="flex gap-3 w-full sm:w-auto">
           <button 
             onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/5 transition-all hover:border-slate-600 shadow-sm font-medium"
           >
-            <RotateCcw size={18} /> 重置
+            <RotateCcw size={18} /> <span className="hidden sm:inline">重置状态</span>
           </button>
           <button 
             onClick={handleSmartRun}
             disabled={loading || isFinished}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white ${
                 isPaused 
-                ? 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-yellow-900/50' 
-                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/50'
+                ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 shadow-orange-900/40' 
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-900/40'
             }`}
           >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : (isPaused ? <StepForward size={18}/> : <Play size={18} />)}
-            {loading ? "仿真中..." : (isPaused ? "继续执行" : "运行")}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : (isPaused ? <StepForward size={20}/> : <Play size={20} />)}
+            {loading ? "仿真中..." : (isPaused ? "单步执行 (Step)" : "运行代码 (Run)")}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
-        {/* Editor Section (1 Column) */}
-        <div className="lg:col-span-1 flex flex-col gap-4">
-            <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 flex flex-col shadow-inner overflow-hidden">
-                <div className="flex justify-between items-center p-3 bg-slate-900/50 border-b border-slate-700">
-                     <label className="text-sm font-semibold text-slate-400">汇编代码 (MASM)</label>
-                     <div className="relative">
+      {/* 2. Main Layout: Input (Left) vs State (Right) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        
+        {/* === LEFT COLUMN: Editor & Log (Width: 8/12) === */}
+        <div className="xl:col-span-8 flex flex-col gap-6">
+            
+            {/* A. Code Editor Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl flex flex-col overflow-hidden group">
+                {/* Editor Toolbar */}
+                <div className="flex justify-between items-center p-3 bg-slate-950/50 border-b border-white/5">
+                     <div className="flex items-center gap-3 pl-2">
+                         <div className="flex gap-1.5 opacity-60">
+                             <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                             <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                             <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                         </div>
+                         <span className="text-xs font-mono font-semibold text-slate-500 ml-2">source.asm</span>
+                     </div>
+                     <div className="flex items-center gap-2">
+                        <button onClick={copyCode} className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors" title="复制代码">
+                            {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16}/>}
+                        </button>
+                        <div className="h-4 w-[1px] bg-white/10 mx-1"></div>
                         <button 
                             onClick={() => setIsPresetMenuOpen(!isPresetMenuOpen)}
-                            className="text-xs flex items-center gap-1 text-blue-400 hover:text-blue-300 z-50 relative focus:outline-none"
+                            className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors border border-indigo-500/20 relative"
                         >
-                             <BookOpen size={14}/> 加载典型考题
+                             <BookOpen size={14}/> 加载题库
+                        </button>
+                        <button 
+                            onClick={() => setShowHelp(!showHelp)}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors ${showHelp ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'border-white/5 bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                        >
+                             <HelpCircle size={14}/> 指令表
                         </button>
                         
+                        {/* Preset Menu Dropdown */}
                         {isPresetMenuOpen && (
                             <>
                                 <div className="fixed inset-0 z-40" onClick={() => setIsPresetMenuOpen(false)}></div>
-                                <div className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 p-2">
+                                <div className="absolute right-4 top-12 w-80 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-200">
+                                     <div className="text-[10px] font-bold text-slate-500 px-3 py-2 uppercase tracking-wider">选择预设代码</div>
                                      {examPresets.map((preset, idx) => (
                                          <button 
                                             key={idx}
@@ -263,9 +342,9 @@ const CpuSimulator: React.FC = () => {
                                                 handleCodeChange(preset.code);
                                                 setIsPresetMenuOpen(false);
                                             }}
-                                            className="block w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded hover:text-white transition-colors"
+                                            className="block w-full text-left px-3 py-3 text-sm text-slate-300 hover:bg-slate-700/50 rounded-lg hover:text-white transition-colors border-b border-transparent hover:border-slate-700 last:border-0"
                                          >
-                                            {preset.name}
+                                            <div className="font-medium text-slate-200">{preset.name}</div>
                                          </button>
                                      ))}
                                 </div>
@@ -274,167 +353,241 @@ const CpuSimulator: React.FC = () => {
                      </div>
                 </div>
                 
-                {/* Editor Container with Gutter */}
-                <div className="flex flex-1 relative min-h-0">
-                    {/* Line Numbers Gutter */}
+                {/* Editor Content */}
+                <div className="flex relative min-h-[500px] bg-[#0b0e14]">
+                    {/* Line Numbers */}
                     <div 
                         ref={lineNumbersRef}
-                        className="w-12 bg-slate-900 border-r border-slate-700 text-right py-4 pr-2 select-none overflow-hidden text-sm font-mono leading-6"
+                        className="w-16 bg-slate-900/30 border-r border-white/5 text-right py-6 pr-4 select-none overflow-hidden text-sm font-mono leading-8 text-slate-600"
                     >
                         {code.split('\n').map((_, i) => (
                             <div 
                                 key={i} 
-                                className="h-6 cursor-pointer flex justify-end items-center gap-1 hover:text-slate-300 transition-colors"
+                                className="h-8 cursor-pointer flex justify-end items-center gap-3 hover:text-slate-400 transition-colors group/line relative"
                                 onClick={() => toggleBreakpoint(i)}
                             >
-                                {breakpoints.includes(i) && <div className="w-2 h-2 rounded-full bg-red-500 mr-1 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></div>}
-                                <span className={`mr-1 ${executionLine === i ? 'text-green-400 font-bold' : 'text-slate-600'}`}>
+                                <div className={`w-2 h-2 rounded-full transition-all ${breakpoints.includes(i) ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] opacity-100 scale-100' : 'opacity-0 scale-0 group-hover/line:opacity-40 group-hover/line:scale-100 bg-red-400'}`}></div>
+                                <span className={`${executionLine === i ? 'text-green-400 font-bold' : ''}`}>
                                     {i + 1}
                                 </span>
                             </div>
                         ))}
                     </div>
 
-                    {/* Code Textarea */}
+                    {/* Text Area */}
                     <textarea 
                         ref={textAreaRef}
                         value={code}
                         onChange={(e) => handleCodeChange(e.target.value)}
                         onScroll={handleScroll}
-                        className="flex-1 bg-slate-900 text-green-400 font-mono p-4 pl-2 focus:outline-none resize-none custom-scrollbar text-sm leading-6 whitespace-pre"
+                        className="flex-1 bg-transparent text-slate-300 font-mono p-6 pl-4 focus:outline-none resize-none custom-scrollbar text-sm leading-8 whitespace-pre selection:bg-blue-500/30 z-10 relative"
                         spellCheck={false}
                         wrap="off"
                     />
                     
-                    {/* Execution Line Highlight Overlay (Pointer) */}
+                    {/* Active Line Highlight */}
                     {executionLine < lineCount && (
                          <div 
-                            className="absolute left-0 pointer-events-none w-full border-l-2 border-green-500 bg-green-500/10 transition-all duration-300"
+                            className="absolute left-0 pointer-events-none w-full border-l-[4px] border-green-500 bg-green-500/10 transition-all duration-300 z-0"
                             style={{ 
-                                top: `${16 + (executionLine * 24) - (textAreaRef.current?.scrollTop || 0)}px`, 
-                                height: '24px' 
+                                top: `${24 + (executionLine * 32) - (textAreaRef.current?.scrollTop || 0)}px`, 
+                                height: '32px' 
                             }}
                          />
                     )}
-                </div>
-                
-                <div className="px-3 py-1 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between">
-                    <span>点击行号设置断点</span>
-                    <span>{executionLine > 0 ? `Paused at Line ${executionLine + 1}` : 'Ready'}</span>
+
+                    {/* Help Slide-in Panel */}
+                    {showHelp && (
+                        <div className="absolute top-0 bottom-0 right-0 w-full md:w-80 bg-slate-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-20 flex flex-col animate-in slide-in-from-right-10 duration-200">
+                             <div className="flex items-center p-4 border-b border-white/10 gap-2 bg-slate-900">
+                                <Search size={16} className="text-slate-500" />
+                                <input 
+                                    type="text" 
+                                    placeholder="搜索指令 (如 MOV)..." 
+                                    value={helpSearch}
+                                    onChange={(e) => setHelpSearch(e.target.value)}
+                                    className="bg-transparent border-none focus:ring-0 text-white text-sm w-full placeholder-slate-500 h-8"
+                                    autoFocus
+                                />
+                                <button onClick={() => setShowHelp(false)} className="text-slate-400 hover:text-white p-1 hover:bg-white/10 rounded">
+                                    <X size={18} />
+                                </button>
+                             </div>
+                             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 bg-slate-900/50">
+                                {filteredDocs.length > 0 ? (
+                                    filteredDocs.map((doc, idx) => (
+                                        <div key={idx} className="bg-slate-800/50 border border-white/5 rounded-xl p-4 text-xs group hover:border-blue-500/30 transition-all hover:bg-slate-800 shadow-sm">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-bold text-green-400 font-mono text-sm px-2 py-0.5 bg-green-900/20 rounded border border-green-500/20">{doc.cmd}</span>
+                                                <span className="text-slate-400 font-medium">{doc.name}</span>
+                                            </div>
+                                            <div className="font-mono text-slate-300 bg-black/30 px-3 py-2 rounded-lg mb-2 border border-white/5 block w-full">{doc.syntax}</div>
+                                            <p className="text-slate-400 leading-relaxed">{doc.desc}</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center text-slate-500 py-12 text-sm">未找到匹配指令</div>
+                                )}
+                             </div>
+                        </div>
+                    )}
                 </div>
             </div>
             
-            {/* Feedback / Error Log */}
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 min-h-[150px] flex flex-col">
-                <label className="text-sm font-semibold text-slate-400 mb-2">仿真日志 / 考点解析</label>
-                <div className="font-mono text-sm flex-1 overflow-y-auto custom-scrollbar max-h-[200px]">
-                    {error ? (
-                        <p className="text-red-400">错误: {error}</p>
+            {/* B. Console / Log Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-0 shadow-xl overflow-hidden flex flex-col h-[350px]">
+                <div className="px-5 py-3 bg-slate-950/50 border-b border-white/5 flex items-center justify-between shrink-0">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Terminal size={14} className="text-blue-400"/> 仿真控制台输出
+                    </label>
+                    {error && <span className="text-xs text-red-400 bg-red-900/20 px-2 py-0.5 rounded border border-red-500/20 font-bold">Error</span>}
+                </div>
+                <div className="flex-1 p-5 bg-[#0b0e14] overflow-y-auto custom-scrollbar">
+                     {error ? (
+                        <div className="flex items-start gap-3 text-red-400 bg-red-950/20 p-4 rounded-xl border border-red-900/30">
+                             <Circle size={8} className="mt-1.5 fill-current shrink-0"/>
+                             <p className="font-mono text-sm">{error}</p>
+                        </div>
                     ) : lastExplanation ? (
-                        <div className="text-slate-300 leading-relaxed whitespace-pre-wrap">{lastExplanation}</div>
+                        <div className="text-slate-300 leading-relaxed font-mono text-sm whitespace-pre-wrap">
+                            <span className="text-green-400 mr-2">➜</span>
+                            {lastExplanation}
+                        </div>
                     ) : (
-                        <p className="text-slate-500 italic">
-                            准备执行...<br/>
-                            1. 点击代码左侧行号可设置<span className="text-red-400 font-bold mx-1">断点</span>。<br/>
-                            2. 程序将在断点处暂停，允许查看寄存器和内存变化。
-                        </p>
+                        <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-3 py-6 opacity-50">
+                            <Terminal size={32} />
+                            <p className="text-center text-sm">暂无输出日志，请运行代码...</p>
+                        </div>
                     )}
                 </div>
             </div>
         </div>
 
-        {/* Registers Section (2 Columns) */}
-        <div className="lg:col-span-2 bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-y-auto custom-scrollbar shadow-xl">
-            <h3 className="text-lg font-semibold text-white mb-6 border-b border-slate-700 pb-2">内部寄存器 (16位)</h3>
+        {/* === RIGHT COLUMN: State Dashboard (Width: 4/12) - Sticky === */}
+        {/* Added xl:max-h-[calc(100vh-8rem)] and xl:overflow-y-auto to allow scrolling of the sticky sidebar itself if content is too tall */}
+        <div className="xl:col-span-4 flex flex-col gap-6 xl:sticky xl:top-24 xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto custom-scrollbar pr-1">
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* General Purpose */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">通用寄存器</h4>
-                    <RegisterRow label="AX" value={registers.AX} sub="累加器" />
-                    <RegisterRow label="BX" value={registers.BX} sub="基址" />
-                    <RegisterRow label="CX" value={registers.CX} sub="计数" />
-                    <RegisterRow label="DX" value={registers.DX} sub="数据" />
+            {/* C. Registers Dashboard */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden shrink-0">
+                <div className="p-4 border-b border-white/5 bg-slate-950/30 flex items-center justify-between">
+                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Cpu size={18} className="text-purple-400"/> CPU 寄存器状态
+                     </h3>
+                     <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-500 font-mono">16-BIT HEX</span>
                 </div>
+                
+                <div className="p-5 flex flex-col gap-6">
+                    {/* Group 1: General Purpose */}
+                    <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 bg-blue-500 rounded-full"></div> 通用寄存器
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <RegisterBox label="AX" value={registers.AX} changed={changedRegs.includes('AX')} sub="Accumulator" />
+                            <RegisterBox label="BX" value={registers.BX} changed={changedRegs.includes('BX')} sub="Base" />
+                            <RegisterBox label="CX" value={registers.CX} changed={changedRegs.includes('CX')} sub="Count" />
+                            <RegisterBox label="DX" value={registers.DX} changed={changedRegs.includes('DX')} sub="Data" />
+                        </div>
+                    </div>
 
-                {/* Pointers & Index */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">指针与变址</h4>
-                    <RegisterRow label="SP" value={registers.SP} sub="堆栈指针" color="text-purple-400" />
-                    <RegisterRow label="BP" value={registers.BP} sub="基址指针" color="text-purple-400" />
-                    <RegisterRow label="SI" value={registers.SI} sub="源变址" color="text-yellow-400" />
-                    <RegisterRow label="DI" value={registers.DI} sub="目的变址" color="text-yellow-400" />
-                </div>
+                    {/* Group 2: Pointers & Index */}
+                    <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 bg-yellow-500 rounded-full"></div> 变址与指针
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            <RegisterBox label="SI" value={registers.SI} changed={changedRegs.includes('SI')} color="text-yellow-400" sub="Source Idx"/>
+                            <RegisterBox label="DI" value={registers.DI} changed={changedRegs.includes('DI')} color="text-yellow-400" sub="Dest Idx"/>
+                            <RegisterBox label="SP" value={registers.SP} changed={changedRegs.includes('SP')} color="text-pink-400" sub="Stack Ptr"/>
+                            <RegisterBox label="BP" value={registers.BP} changed={changedRegs.includes('BP')} color="text-pink-400" sub="Base Ptr"/>
+                        </div>
+                    </div>
 
-                {/* Instruction & Flags */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">控制寄存器</h4>
-                    <RegisterRow label="IP" value={registers.IP} sub="指令指针" color="text-red-400" />
-                    <RegisterRow label="FLAGS" value={registers.FLAGS} sub="状态标志" color="text-red-400" />
-                </div>
-
-                {/* Segments */}
-                <div className="space-y-4">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">段寄存器</h4>
-                    <RegisterRow label="CS" value={registers.CS} sub="代码段" color="text-teal-400" />
-                    <RegisterRow label="DS" value={registers.DS} sub="数据段" color="text-teal-400" />
-                    <RegisterRow label="SS" value={registers.SS} sub="堆栈段" color="text-teal-400" />
-                    <RegisterRow label="ES" value={registers.ES} sub="附加段" color="text-teal-400" />
+                    {/* Group 3: Segments & Control */}
+                    <div>
+                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 pl-1 flex items-center gap-2">
+                            <div className="w-1 h-1 bg-teal-500 rounded-full"></div> 段寄存器与控制
+                        </h4>
+                        <div className="grid grid-cols-4 gap-2 mb-3">
+                             <RegisterMini label="CS" value={registers.CS} changed={changedRegs.includes('CS')} />
+                             <RegisterMini label="DS" value={registers.DS} changed={changedRegs.includes('DS')} />
+                             <RegisterMini label="SS" value={registers.SS} changed={changedRegs.includes('SS')} />
+                             <RegisterMini label="ES" value={registers.ES} changed={changedRegs.includes('ES')} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                             <RegisterBox label="IP" value={registers.IP} changed={changedRegs.includes('IP')} color="text-red-400" sub="Inst Ptr"/>
+                             <RegisterBox label="FL" value={registers.FLAGS} changed={changedRegs.includes('FLAGS')} color="text-red-400" sub="Flags"/>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        {/* Memory View (1 Column) */}
-        <div className="lg:col-span-1 bg-slate-800 rounded-xl border border-slate-700 flex flex-col shadow-xl overflow-hidden">
-             <div className="p-4 bg-slate-900 border-b border-slate-700">
-                <div className="flex items-center gap-2 mb-3">
-                    <Database size={18} className="text-purple-400" />
-                    <h3 className="font-semibold text-white">内存监视 (DS段)</h3>
-                </div>
-                <div className="relative">
-                    <input 
-                        type="text" 
-                        value={memoryStartAddr}
-                        onChange={(e) => {
-                            // Only allow hex chars
-                            if (/^[0-9a-fA-F]*$/.test(e.target.value) && e.target.value.length <= 4) {
-                                setMemoryStartAddr(e.target.value);
-                            }
-                        }}
-                        className="w-full bg-slate-800 text-white pl-8 pr-3 py-2 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500 font-mono text-sm"
-                        placeholder="Offset (0000)"
-                    />
-                    <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
-                </div>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-slate-900">
-                 <div className="flex justify-between px-2 py-1 text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">
-                     <span>Offset</span>
-                     <span>Value</span>
+            {/* D. Memory Monitor */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col shrink-0">
+                 <div className="p-4 bg-slate-950/30 border-b border-white/5 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                        <Database size={16} className="text-green-400" />
+                        <h3 className="font-bold text-white text-sm">内存监视</h3>
+                    </div>
+                    <div className="relative group w-28">
+                        <input 
+                            type="text" 
+                            value={memoryStartAddr}
+                            onChange={(e) => {
+                                if (/^[0-9a-fA-F]*$/.test(e.target.value) && e.target.value.length <= 4) {
+                                    setMemoryStartAddr(e.target.value);
+                                }
+                            }}
+                            className="w-full bg-slate-800 text-white pl-8 pr-3 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-blue-500/50 focus:bg-slate-700 font-mono text-xs transition-all text-right"
+                            placeholder="0000"
+                        />
+                        <Search className="absolute left-2.5 top-2 text-slate-500 pointer-events-none" size={12} />
+                    </div>
                  </div>
-                 <div className="space-y-0.5">
-                     {renderMemoryRows()}
+                 
+                 <div className="p-0 bg-[#0b0e14]">
+                     <div className="flex justify-between px-4 py-2 bg-slate-800/50 border-b border-white/5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                         <span>Offset</span>
+                         <span>Hex Value</span>
+                     </div>
+                     <div className="divide-y divide-white/5 h-[350px] overflow-y-auto custom-scrollbar">
+                         {renderMemoryRows()}
+                     </div>
                  </div>
-             </div>
-             <div className="p-2 text-[10px] text-center text-slate-600 bg-slate-900 border-t border-slate-800">
-                 默认显示 00, 黄色为已修改
-             </div>
+            </div>
         </div>
       </div>
     </div>
   );
 };
 
-const RegisterRow: React.FC<{ label: string; value: string; sub: string; color?: string }> = ({ label, value, sub, color = "text-blue-400" }) => (
-    <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 hover:border-slate-600 transition-colors">
-        <div className="flex flex-col">
-            <span className={`font-bold text-lg ${color}`}>{label}</span>
-            <span className="text-[10px] text-slate-500 uppercase">{sub}</span>
+// Component: Large Register Box
+const RegisterBox: React.FC<{ label: string; value: string; changed: boolean; sub?: string; color?: string }> = ({ label, value, changed, sub, color = "text-blue-400" }) => (
+    <div className={`flex flex-col p-3 rounded-xl border transition-all duration-300 relative overflow-hidden group ${
+        changed 
+        ? 'bg-yellow-500/10 border-yellow-500/40 shadow-[0_0_15px_rgba(234,179,8,0.1)]' 
+        : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800'
+    }`}>
+        {changed && <div className="absolute top-0 right-0 w-2 h-2 bg-yellow-400 rounded-bl-lg shadow-[0_0_5px_rgba(234,179,8,0.8)] animate-pulse"></div>}
+        <div className="flex justify-between items-end mb-1">
+            <span className={`font-bold text-sm ${color} font-mono tracking-tight`}>{label}</span>
+            {sub && <span className="text-[9px] text-slate-600 uppercase tracking-wider font-semibold opacity-0 group-hover:opacity-100 transition-opacity">{sub}</span>}
         </div>
-        <div className="font-mono text-xl tracking-widest text-white">
-            {value}<span className="text-slate-600 text-sm ml-1">H</span>
+        <div className={`font-mono text-xl tracking-wider text-slate-200 transition-transform ${changed ? 'text-yellow-200 font-bold scale-105 origin-left' : ''}`}>
+            {value}
         </div>
+    </div>
+);
+
+// Component: Mini Segment Register
+const RegisterMini: React.FC<{ label: string; value: string; changed: boolean }> = ({ label, value, changed }) => (
+    <div className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all duration-300 ${
+        changed 
+        ? 'bg-teal-500/20 border-teal-500/40' 
+        : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800'
+    }`}>
+        <span className="text-[10px] text-teal-500 font-bold mb-0.5">{label}</span>
+        <span className={`font-mono text-xs text-slate-300 ${changed ? 'text-teal-200 font-bold' : ''}`}>{value}</span>
     </div>
 );
 

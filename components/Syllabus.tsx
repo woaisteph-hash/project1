@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SyllabusNode } from '../types';
 import { chatWithTutor } from '../services/geminiService';
-import { ChevronRight, ChevronDown, BookOpen, MessageCircle, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, BookOpen, MessageCircle, Loader2, Star } from 'lucide-react';
 
 const syllabusData: SyllabusNode[] = [
   {
@@ -64,14 +64,12 @@ const Syllabus: React.FC = () => {
   const [activeTitle, setActiveTitle] = useState("");
 
   const handleNodeClick = async (node: SyllabusNode) => {
-    // If it has children, toggle expand (handled by state if we implemented full accordion, 
-    // but here we just select it to show info if it has a prompt)
     if (node.queryPrompt) {
         setLoading(true);
         setActiveTitle(node.title);
-        setExplanation(""); // Clear previous
+        setActiveNodeId(node.id);
+        setExplanation(""); 
         
-        // Use a lightweight chat history context for specific explanation
         const history = [{
             role: 'model', 
             parts: [{ text: "我是你的考研复习助教。请点击大纲条目，我会为你解析重点。" }]
@@ -80,71 +78,84 @@ const Syllabus: React.FC = () => {
         setExplanation(text);
         setLoading(false);
     }
-    // Simple expand/collapse logic could go here
   };
 
   const renderTree = (nodes: SyllabusNode[], level = 0) => {
     return (
-        <div className={`flex flex-col gap-1 ${level > 0 ? 'ml-6 border-l border-slate-700 pl-4' : ''}`}>
-            {nodes.map(node => (
-                <div key={node.id}>
-                    <button 
-                        onClick={() => handleNodeClick(node)}
-                        className={`text-left w-full py-2 px-3 rounded hover:bg-slate-800 transition-colors flex items-center justify-between group ${level === 0 ? 'font-bold text-slate-200' : 'text-sm text-slate-400'}`}
-                    >
-                        <span className="group-hover:text-blue-400 transition-colors">{node.title}</span>
-                        {node.queryPrompt && <MessageCircle size={14} className="opacity-0 group-hover:opacity-100 text-blue-500" />}
-                    </button>
-                    {node.children && renderTree(node.children, level + 1)}
-                </div>
-            ))}
+        <div className={`flex flex-col gap-1 ${level > 0 ? 'ml-4 border-l border-slate-700/50 pl-4' : ''}`}>
+            {nodes.map(node => {
+                const isActive = activeNodeId === node.id;
+                return (
+                    <div key={node.id}>
+                        <button 
+                            onClick={() => handleNodeClick(node)}
+                            className={`text-left w-full py-2.5 px-3 rounded-lg transition-all flex items-center justify-between group ${
+                                level === 0 
+                                ? 'font-bold text-slate-200 bg-slate-800/30 mb-2' 
+                                : isActive 
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' 
+                                    : 'text-sm text-slate-400 hover:bg-slate-800 hover:text-white'
+                            }`}
+                        >
+                            <span className="truncate pr-2">{node.title}</span>
+                            {node.queryPrompt && (
+                                <Star 
+                                    size={14} 
+                                    className={`${isActive ? 'text-white fill-white' : 'text-slate-600 group-hover:text-blue-400'} transition-colors`} 
+                                />
+                            )}
+                        </button>
+                        {node.children && <div className="mt-1">{renderTree(node.children, level + 1)}</div>}
+                    </div>
+                );
+            })}
         </div>
     );
   };
 
   return (
-    <div className="flex flex-col h-full gap-6 overflow-y-auto lg:overflow-hidden">
-        <div className="flex items-center justify-between shrink-0">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+    <div className="flex flex-col gap-6 w-full max-w-[1800px] mx-auto">
+        <div className="flex items-center justify-between shrink-0 bg-slate-900/50 p-6 rounded-2xl border border-white/5 backdrop-blur-sm">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
             <BookOpen className="text-blue-400" /> 复习大纲
             </h2>
-            <div className="text-xs text-slate-500 bg-slate-800 px-3 py-1 rounded-full">
-                点击考点获取 AI 解析
+            <div className="text-xs text-blue-300 bg-blue-900/20 px-4 py-1.5 rounded-full border border-blue-500/20 font-medium">
+                点击考点获取 AI 深度解析
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:flex-1 lg:min-h-0 pb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Tree View */}
-            {/* Mobile: fixed height (h-96) to allow scrolling. Desktop: auto height to fill grid. */}
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 overflow-y-auto custom-scrollbar h-96 lg:h-auto">
+            <div className="lg:col-span-4 bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl sticky top-24">
                 {renderTree(syllabusData)}
             </div>
 
             {/* Content View */}
-            <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 flex flex-col shadow-xl min-h-[500px] lg:min-h-0">
+            <div className="lg:col-span-8 bg-slate-900 rounded-2xl border border-slate-800 p-8 flex flex-col shadow-xl min-h-[600px]">
                 {activeTitle ? (
                     <>
-                        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2 border-b border-slate-700 pb-2">
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3 border-b border-white/5 pb-4">
+                             <div className="p-2 bg-blue-500/10 rounded-lg"><Star className="text-blue-400 fill-blue-500/20" size={20}/></div>
                              {activeTitle}
                         </h3>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        <div className="flex-1">
                             {loading ? (
-                                <div className="flex items-center justify-center h-full text-slate-400 gap-2">
-                                    <Loader2 className="animate-spin" />
-                                    正在生成考点解析...
+                                <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-4">
+                                    <Loader2 className="animate-spin text-blue-500" size={32} />
+                                    <span className="text-sm font-medium">AI 教授正在整理笔记...</span>
                                 </div>
                             ) : (
-                                <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap leading-relaxed">
+                                <div className="prose prose-invert prose-lg max-w-none whitespace-pre-wrap leading-relaxed text-slate-300">
                                     {explanation}
                                 </div>
                             )}
                         </div>
                     </>
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                        <BookOpen size={48} className="mb-4 opacity-20" />
-                        <p>请在左侧选择一个考点</p>
-                        <p className="text-xs mt-2">AI 助教将为你生成详细的复习笔记</p>
+                    <div className="flex flex-col items-center justify-center h-full text-slate-500 py-20 opacity-60">
+                        <BookOpen size={64} className="mb-6 stroke-1" />
+                        <p className="text-lg">请在左侧目录选择一个考点</p>
+                        <p className="text-sm mt-2">AI 助教将为你生成详细的复习重点与解析</p>
                     </div>
                 )}
             </div>
